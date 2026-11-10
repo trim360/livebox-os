@@ -290,6 +290,11 @@ export default function App() {
     setToast(message);
   }
   const theme = workspace.value.theme || preferences.theme;
+  function updateAppearance(value: Preferences | ((current: Preferences) => Preferences)) {
+    const next = typeof value === 'function' ? value({ ...preferences, theme }) : value;
+    setPreferences(next);
+    workspace.setValue(current => ({ ...current, theme: next.theme }));
+  }
   const appearance = desktopPreferences(preferences.desktop);
   const desktopApps = orderApplications(APPS, appearance.icon_order);
   const dockApps = dockApplications(desktopApps, appearance.dock_pinned, windows);
@@ -371,7 +376,7 @@ export default function App() {
     };
   }, [auth?.authenticated]);
   useEffect(() => {
-    if (!auth?.authenticated || !preferencesLoaded) return;
+    if (!auth?.authenticated || auth.role !== 'admin' || !preferencesLoaded) return;
     const serialized = JSON.stringify(preferences);
     if (serialized === savedPreferences.current) return;
     const timer = setTimeout(
@@ -609,12 +614,12 @@ export default function App() {
     if (id === "personalization")
       return (
         <><PersonalizationPanel
-          preferences={preferences}
-          update={setPreferences}
+          preferences={{ ...preferences, theme }}
+          update={updateAppearance}
           image={image}
           onImage={setImage}
           notify={notify}
-        /><DesktopAppearance preferences={preferences} update={setPreferences} apps={APPS} /></>
+        /><DesktopAppearance preferences={{ ...preferences, theme }} update={updateAppearance} apps={APPS} /></>
       );
     if (id === "profiles")
       return <ProfilesPanel connect={showLogin} notify={notify} revision={revision} />;
@@ -623,8 +628,8 @@ export default function App() {
       return (
         <BackupPanel
           restored={() => setRevision(value => value + 1)}
-          preferences={preferences}
-          update={setPreferences}
+          preferences={{ ...preferences, theme }}
+          update={updateAppearance}
           onImage={setImage}
           notify={notify}
         />
@@ -634,7 +639,7 @@ export default function App() {
     if (id === 'notifications') return <NotificationApplication open={openApp} />;
     if (id === 'security') return <SecurityApplication session={session} open={openApp} />;
     if (id === 'livebox-tools') return <LiveboxTools connected={session.connected} connect={() => showLogin()} open={openApp} />;
-    if (id === 'app-settings') return <ApplicationSettings density={density} setDensity={setDensity} preferences={preferences} update={setPreferences} open={openApp} />;
+    if (id === 'app-settings') return <ApplicationSettings density={density} setDensity={setDensity} preferences={{ ...preferences, theme }} update={updateAppearance} open={openApp} />;
     if (id === 'devices') return <DeviceApplication legacy={session.connected ? <DevicesPanel revision={revision} /> : disconnected} />;
     if (id === 'stats') return <StatisticsApplication legacy={session.connected ? <StatisticsPanel snapshot={snapshot} /> : disconnected} />;
     if (id === 'journal') return <AuditApplication legacy={session.connected ? <JournalPanel entries={events} revision={revision} /> : disconnected} />;
