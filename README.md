@@ -1,3 +1,13 @@
+# Livebox OS 5.0 — Rebirth
+
+A local network and Linux workspace built with React and FastAPI. V5 adds a configurable dashboard, restored windows, SSH terminals, Docker administration with confirmation, scoped file browsing, local accounts and HTTP service monitoring. Existing Livebox / TP-Link integrations remain available.
+
+Un espace local pour votre réseau et vos serveurs Linux : dashboard personnalisable, fenêtres restaurées, terminal SSH, Docker avec confirmation, explorateur limité aux dossiers autorisés, comptes et surveillance HTTP.
+
+![Livebox OS Rebirth, isolated local instance](docs/images/rebirth-desktop.png)
+
+**[V5 guide / Guide V5](docs/V5.md)** · **[Migration and rollback](docs/V5-MIGRATION.md)**
+
 <div align="center">
 
 <img src="frontend/public/livebox-logo.svg" width="80" alt="Livebox OS logo" />

@@ -12,7 +12,7 @@ export type Resource = {
 };
 type Device = { name: string; ip: string; mac?: string; connection?: string; router: string; active?: boolean };
 type Catalog = { id: string; manufacturer: string; model?: string; method?: string; status: string; note?: string };
-type Automation = { id: string; name: string; resource: string; event: string; enabled: boolean };
+type Automation = { id: string; name: string; resource: string; event: string; enabled: boolean; threshold?: number };
 type Note = { id: string; alias: string; favorite: boolean; category: string };
 
 export function useRemote<T>(path: string, interval = 0, enabled = true) {
@@ -33,7 +33,7 @@ export function useRemote<T>(path: string, interval = 0, enabled = true) {
     finally { if (!current.signal.aborted) setBusy(false); }
   }, [path]);
   useEffect(() => {
-    if (!visible || !enabled) { controller.current?.abort(); setBusy(false); return; }
+    if (!visible || !enabled) { controller.current?.abort(); setBusy(false); if (!enabled) { setData(undefined); setError(''); } return; }
     void load();
     const timer = interval ? setInterval(() => { if (!document.hidden) void load(); }, interval) : undefined;
     return () => { clearInterval(timer); controller.current?.abort(); };
@@ -162,12 +162,13 @@ export function Automations({ resources }: { resources: Resource[] }) {
   const [name, setName] = useState('');
   const [resource, setResource] = useState('');
   const [event, setEvent] = useState('unavailable');
+  const [threshold, setThreshold] = useState(90);
   const [message, setMessage] = useState('');
   async function run(job: () => Promise<unknown>) { try { await job(); await state.load(); setMessage('Règle enregistrée ou test effectué.'); } catch (e) { setMessage((e as Error).message); } }
   return <section className="cc-section"><h2>Règles de notification</h2><p>Évaluées par le backend pendant une session de collecte active. Aucune modification automatique du réseau. L’absence de session n’est pas assimilée à une panne.</p><Feedback {...state} />{message && <p role="status">{message}</p>}
-    <form className="cc-form" onSubmit={e => { e.preventDefault(); void run(() => api('/control/rules', { name, resource, event, enabled: true })); }}><div className="cc-fields"><label>Nom de la règle<input required maxLength={80} value={name} onChange={e => setName(e.target.value)} /></label><label>Équipement<select required value={resource} onChange={e => setResource(e.target.value)}><option value="">Choisir un équipement</option>{resources.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label><label>Événement<select value={event} onChange={e => setEvent(e.target.value)}><option value="unavailable">Équipement devenu inaccessible</option><option value="new_device">Nouvel appareil observé</option><option value="public_ip">Changement d’adresse WAN</option></select></label></div><button className="cc-primary">Créer la règle</button></form>
+    <form className="cc-form" onSubmit={e => { e.preventDefault(); void run(() => api('/control/rules', { name, resource, event, threshold, enabled: true })); }}><div className="cc-fields"><label>Nom de la règle<input required maxLength={80} value={name} onChange={e => setName(e.target.value)} /></label><label>Équipement<select required value={resource} onChange={e => setResource(e.target.value)}><option value="">Choisir un équipement</option>{resources.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label><label>Événement<select value={event} onChange={e => setEvent(e.target.value)}><option value="unavailable">Équipement devenu inaccessible</option><option value="new_device">Nouvel appareil observé</option><option value="public_ip">Changement d’adresse WAN</option><option value="cpu">Seuil CPU</option><option value="memory">Seuil RAM</option><option value="disk">Seuil stockage</option></select></label>{["cpu", "memory", "disk"].includes(event) && <label>Seuil en %<input type="number" min="1" max="100" value={threshold} onChange={e => setThreshold(Number(e.target.value))} /></label>}</div><button className="cc-primary">Créer la règle</button></form>
     {!state.data?.length && <p className="cc-empty">Aucune règle créée. Les alertes restent dans cette application.</p>}
-    {state.data?.map(rule => <article className="cc-row" key={rule.id}><div><h3>{rule.name}</h3><p>{resources.find(r => r.id === rule.resource)?.name || 'Équipement retiré'} · {rule.event} · {rule.enabled ? 'Activée' : 'Désactivée'}</p></div><div className="cc-actions"><button onClick={() => void run(() => api(`/control/rules/${rule.id}`, { name: rule.name, resource: rule.resource, event: rule.event, enabled: !rule.enabled }, 'PUT'))}>{rule.enabled ? 'Désactiver' : 'Activer'}</button><button onClick={() => void run(() => api(`/control/rules/${rule.id}/test`, {}))}>Tester la notification</button></div></article>)}
+    {state.data?.map(rule => <article className="cc-row" key={rule.id}><div><h3>{rule.name}</h3><p>{resources.find(r => r.id === rule.resource)?.name || 'Équipement retiré'} · {rule.event} · {rule.enabled ? 'Activée' : 'Désactivée'}</p></div><div className="cc-actions"><button onClick={() => void run(() => api(`/control/rules/${rule.id}`, { name: rule.name, resource: rule.resource, event: rule.event, threshold: rule.threshold ?? 90, enabled: !rule.enabled }, 'PUT'))}>{rule.enabled ? 'Désactiver' : 'Activer'}</button><button onClick={() => void run(() => api(`/control/rules/${rule.id}/test`, {}))}>Tester la notification</button></div></article>)}
   </section>;
 }
 

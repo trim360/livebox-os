@@ -1,4 +1,6 @@
 import {
+  Suspense,
+  lazy,
   useEffect,
   useRef,
   useState,
@@ -53,7 +55,10 @@ import {
 import { ArcherPanel, TopologyPanel, AdvancedNATPanel, MonitorPanel } from "./NetworkPanels";
 import AuthGate from "./AuthGate";
 import UserMenu from "./UserMenu";
-import LiveboxPhoto from "./LiveboxPhoto";
+import Rebirth, { useWorkspace } from "./Rebirth";
+const ServerCenter = lazy(() => import("./ServerCenter"));
+const ServiceMonitor = lazy(() => import("./ServiceMonitor"));
+const AccountsPanel = lazy(() => import("./ServerCenter").then(m => ({ default: m.AccountsPanel })));
 import DesktopWindow from './DesktopWindow';
 import { clampWindow, desktopPreferences, dockApplications, focusWindow, orderApplications, restoredGeometry, type DesktopPreferences, type DesktopWindowState } from './desktop';
 import { ApplicationSettings, AuditApplication, DesktopAppearance, DeviceApplication, DiagnosticApplication, LiveboxTools, NotificationApplication, OverviewApplication, RegistryApplication, RouterApplication, SecurityApplication, StatisticsApplication, Tabs } from './DesktopApps';
@@ -86,7 +91,7 @@ export type AppId =
   | "diagnostics"
   | "backup"
   | "personalization" | "archer" | "topology" | "advanced-nat" | "monitor"
-  | "vpn" | "security" | "servers" | "automations" | "notifications" | "wifi" | "livebox-tools" | "app-settings" | "overview";
+  | "vpn" | "security" | "servers" | "automations" | "notifications" | "wifi" | "livebox-tools" | "app-settings" | "overview" | "docker" | "terminal" | "system" | "processes" | "logs" | "files" | "accounts" | "services";
 export const APPS: {
   id: AppId;
   name: string;
@@ -204,6 +209,14 @@ export const APPS: {
   { id: 'notifications', name: 'Notifications', short: 'Notifications', description: 'Historique et acquittement des alertes', icon: Bell, color: 'pink' },
   { id: 'app-settings', name: 'Paramètres de l’application', short: 'Paramètres OS', description: 'Préférences et version de Livebox OS', icon: SlidersHorizontal, color: 'slate' },
   { id: 'overview', name: 'Vue réseau', short: 'Vue réseau', description: 'Synthèse facultative dans une fenêtre', icon: Activity, color: 'green' },
+  { id: "docker", name: "Docker", short: "Docker", description: "Conteneurs, images, volumes et commandes confirmées", icon: Server, color: "blue" },
+  { id: "terminal", name: "Terminal SSH", short: "Terminal SSH", description: "Session interactive sur votre serveur", icon: Terminal, color: "slate" },
+  { id: "system", name: "Informations système", short: "Informations système", description: "Noyau, services, températures et swap", icon: HardDrive, color: "teal" },
+  { id: "processes", name: "Processus Linux", short: "Processus Linux", description: "Processus et ressources réellement mesurés", icon: Activity, color: "green" },
+  { id: "logs", name: "Centre des journaux", short: "Centre des journaux", description: "Journaux Linux et recherche", icon: Terminal, color: "slate" },
+  { id: "files", name: "Explorateur Linux", short: "Explorateur Linux", description: "Répertoires explicitement autorisés", icon: FolderOpen, color: "blue" },
+  { id: "accounts", name: "Comptes", short: "Comptes", description: "Utilisateurs et permissions", icon: Users, color: "violet" },
+  { id: "services", name: "Service Monitor", short: "Services web", description: "Disponibilité HTTP et historique des services privés", icon: Activity, color: "teal" },
 ];
 export type Preferences = {
   theme: "light" | "dark";
@@ -253,6 +266,7 @@ export default function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>({});
   const [events, setEvents] = useState<LogEntry[]>([]);
   const [windows, setWindows] = useState<WindowState[]>([]);
+  const workspace = useWorkspace(auth?.authenticated === true, windows, items => setWindows(items as WindowState[]), APPS.map(a => a.id));
   const [preferences, setPreferences] =
     useState<Preferences>(initialPreferences);
   const [image, setImage] = useState("");
@@ -275,6 +289,7 @@ export default function App() {
   function notify(message: string) {
     setToast(message);
   }
+  const theme = workspace.value.theme || preferences.theme;
   const appearance = desktopPreferences(preferences.desktop);
   const desktopApps = orderApplications(APPS, appearance.icon_order);
   const dockApps = dockApplications(desktopApps, appearance.dock_pinned, windows);
@@ -579,6 +594,7 @@ export default function App() {
       setAuth((s) => (s ? { ...s, authenticated: false } : null));
       setSession({ connected: false });
       setEvents([]);
+      setWindows([]);
       notify("Session fermée.");
     } catch (e) {
       notify((e as Error).message);
@@ -587,6 +603,9 @@ export default function App() {
   const connected = session.connected && internetConnected(snapshot);
   const info = rec(snapshot.info?.data);
   const panel = (id: AppId) => {
+    if (["docker", "terminal", "system", "processes", "logs", "files"].includes(id)) return <Suspense fallback={<p className="panel">Chargement…</p>}><ServerCenter mode={id} openServers={() => openApp("servers")} /></Suspense>;
+    if (id === "services") return <Suspense fallback={<p className="panel">Chargement…</p>}><ServiceMonitor /></Suspense>;
+    if (id === "accounts") return <Suspense fallback={<p className="panel">Chargement…</p>}><AccountsPanel /></Suspense>;
     if (id === "personalization")
       return (
         <><PersonalizationPanel
@@ -642,7 +661,7 @@ export default function App() {
 
   return (
     <main
-      className={`os desktop-os ${preferences.theme} density-${density} icons-${appearance.icon_size} ${appearance.animations ? '' : 'motion-disabled'}`}
+      className={`os desktop-os rebirth-os motion-${workspace.value.motion} accent-${workspace.value.accent} ${theme} density-${density} icons-${appearance.icon_size} ${appearance.animations ? '' : 'motion-disabled'}`}
       data-accent={appearance.accent}
       onClick={() => menu && setMenu(null)}
     >
@@ -690,7 +709,7 @@ export default function App() {
             />
             <span className="brand-name">
               Livebox <b>OS</b>
-              <small>VOTRE LIVEBOX, SIMPLEMENT.</small>
+              <small>REBIRTH · VOTRE ESPACE RÉSEAU.</small>
             </span>
             <span className="version" title={version}>{version}</span>
           </div>
@@ -702,121 +721,17 @@ export default function App() {
               className="round-button"
               title="Changer de thème"
               aria-label="Changer de thème"
-              onClick={() =>
-                setPreferences((p) => ({
-                  ...p,
-                  theme: p.theme === "dark" ? "light" : "dark",
-                }))
-              }
+              onClick={() => workspace.setValue(v => ({ ...v, theme: theme === "dark" ? "light" : "dark" }))}
             >
-              {preferences.theme === "light" ? (
-                <Moon size={18} />
-              ) : (
-                <Sun size={18} />
-              )}
+              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
             </button>
             <span className="header-divider" />
             <UserMenu active={auth?.authenticated === true} profiles={() => openApp("profiles")} logout={() => void logout()} />
           </div>
         </header>
-        <section className="desktop-intro">
-          <span className="eyebrow">BIENVENUE CHEZ VOUS</span>
-          <h1>
-            Tout votre réseau.
-            <br />
-            <span>À portée de main.</span>
-          </h1>
-          <p>Un espace pour votre Livebox. Et tout ce qui s’y connecte.</p>
-        </section>
-        <section id="desktop-applications" className="desktop-apps" aria-label="Applications Livebox OS" tabIndex={-1}>
-          {desktopApps.map((app) => (
-            <button
-              className="desktop-app"
-              key={app.id}
-              onClick={() => openApp(app.id)}
-              title={app.description}
-            >
-              <span className={`app-icon ${app.color}`}>
-                <app.icon size={29} strokeWidth={1.7} />
-              </span>
-              <span>{app.name}</span>
-              {windows.some((w) => w.id === app.id) && (
-                <i className="app-running" />
-              )}
-            </button>
-          ))}
-        </section>
-        <aside className="connection-widget">
-          <div className="widget-heading">
-            <span>
-              <i className={`status-dot ${connected ? "online" : ""}`} />{" "}
-              {connected
-                ? "VOTRE LIVEBOX EST CONNECTÉE"
-                : session.connected
-                  ? "SESSION LIVEBOX OUVERTE"
-                  : "VOTRE ESPACE LIVEBOX"}
-            </span>
-            <button
-              className="icon-button"
-              aria-label="Ouvrir l’état de la Livebox"
-              onClick={() => openApp("status")}
-            >
-              <MoreHorizontal size={19} />
-            </button>
-          </div>
-          <div className="router-scene">
-            <LiveboxPhoto info={session.connected ? info : {}} />
-            <div className="router-orbit orbit-a" />
-            <div className="router-orbit orbit-b" />
-            <span className="router-spark spark-a" />
-            <span className="router-spark spark-b" />
-          </div>
-          <div className="widget-body">
-            <span className="mini-label">VOTRE MAISON CONNECTÉE</span>
-            <h2>
-              {session.connected
-                ? text(
-                    info.ProductClass === "Livebox Fibre"
-                      ? "Livebox 5"
-                      : info.ProductClass,
-                  )
-                : "Faites comme chez vous."}
-            </h2>
-            <p>
-              {session.connected
-                ? `Profil ${session.name}. Retrouvez l’état et l’activité de votre réseau en temps réel.`
-                : "Connectez votre Livebox pour retrouver votre réseau et tous vos appareils."}
-            </p>
-            <button
-              className="primary wide"
-              onClick={() =>
-                session.connected ? openApp("status") : showLogin()
-              }
-            >
-              {session.connected ? "Ouvrir ma Livebox" : "Connecter ma Livebox"}
-              <ChevronRight size={17} />
-            </button>
-            <span className="privacy-note">
-              <LockKeyhole size={11} /> Vos identifiants restent sur votre
-              serveur local.
-            </span>
-          </div>
-        </aside>
-        <div className="desktop-footer">
-          <span>
-            <i className={`status-dot ${connected ? "online" : ""}`} />
-            {!backend
-              ? "Backend local indisponible"
-              : session.connected
-                ? stream
-                  ? "Session active · actualisation en direct"
-                  : "Session active · reconnexion du flux…"
-                : "Prêt à se connecter"}
-          </span>
-          <button onClick={() => openApp("personalization")}>
-            <Paintbrush size={13} /> Personnaliser mon bureau
-          </button>
-        </div>
+        <Rebirth active={auth?.authenticated === true} apps={desktopApps} open={id => openApp(id as AppId)}
+          session={session} snapshot={snapshot} events={events} workspace={{ ...workspace.value, windows }} update={workspace.setValue}
+          error={workspace.error} connect={() => showLogin()} arrange={() => setWindows(items => items.map((w, i) => clampWindow({ ...w, maximized: false, minimized: false, x: 100 + i * 32, y: 90 + i * 26, width: 780, height: 570 }, innerWidth, innerHeight)))} />
       </div>
       {windows.map((win) => {
         const app = APPS.find((a) => a.id === win.id)!;

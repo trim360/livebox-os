@@ -1,5 +1,17 @@
 # Changelog
 
+## 5.0.0 — Rebirth (2026-11-10)
+
+- Blue/cyan/violet light and dark workspace; customizable widgets and per-account window restoration.
+- Global application/device search, keyboard widget ordering, mobile full-screen apps, performance profiles.
+- SSH terminal with host-key verification; Docker inventory, stats, logs, Compose stacks and confirmed actions.
+- Scoped SFTP directory browser; Linux metrics, processes, services, journals and seven-day CPU/RAM history.
+- Viewer/operator accounts, access suspension, server-side authorization and isolated profiles.
+- CPU/RAM/disk thresholds, recovery events and persistent HTTP service checks.
+- Existing Livebox, TP-Link, NAT, avatar, wallpaper and backup integrations preserved.
+- Nimbo integration excluded at the owner's request.
+
+
 ## 4.0.1 — 2026-10-26
 
 - Fixed SSH connection testing: failed reads no longer create connected sessions; missing identity, rejected authentication, refused port and network failures have distinct messages.

@@ -29,6 +29,7 @@ router = APIRouter(prefix='/api/auth')
 @dataclass
 class AdminSession:
     username: str = ''
+    role: str = 'admin'
     expires: float = field(default_factory=lambda: time.time() + LIFETIME)
     csrf: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     pending: dict = field(default_factory=dict)
@@ -93,17 +94,24 @@ def account_path():
     return DATA / 'account.json'
 
 
-def issue(request, response, username):
+def extra_accounts():
+    try:
+        return json.loads((DATA / 'accounts.json').read_text(encoding='utf-8'))
+    except FileNotFoundError:
+        return {}
+
+
+def issue(request, response, username, role='admin'):
     for key, value in list(sessions.items()):
         if value.expires <= time.time():
             sessions.pop(key, None)
     if len(sessions) >= 16:
         raise HTTPException(429, 'Trop de sessions Livebox OS ouvertes.')
     key = secrets.token_urlsafe(32)
-    session = AdminSession(username=username)
+    session = AdminSession(username=username, role=role)
     sessions[key] = session
     response.set_cookie(COOKIE, key, httponly=True, samesite='strict', secure=os.environ.get('ORANGE_COOKIE_SECURE') == '1' or request.url.scheme == 'https', max_age=LIFETIME)
-    return {'authenticated': True, 'configured': True, 'csrf': session.csrf}
+    return {'authenticated': True, 'configured': True, 'csrf': session.csrf, 'role': session.role}
 
 
 @router.get('/state')
@@ -129,7 +137,7 @@ async def state(request: Request, response: Response):
             response.set_cookie('orange_setup', f'{identifier}.{secret}', httponly=True, samesite='strict', secure=os.environ.get('ORANGE_COOKIE_SECURE') == '1' or request.url.scheme == 'https', max_age=600)
             pairing = (identifier, value)
         extra['pairing_id'] = pairing[0]
-    return {'configured': configured, 'authenticated': bool(session), 'setup_allowed': first_setup_allowed(request), **extra, **({'csrf': session.csrf} if session else {})}
+    return {'configured': configured, 'authenticated': bool(session), 'setup_allowed': first_setup_allowed(request), **extra, **({'csrf': session.csrf, 'role': session.role} if session else {})}
 
 
 def throttle(request):
@@ -170,13 +178,16 @@ async def login(body: Credentials, request: Request, response: Response):
     throttle(request)
     try:
         account = json.loads(account_path().read_text(encoding='utf-8'))
+        if body.username != account['username']:
+            extra = extra_accounts().get(body.username)
+            if extra: account = extra | {'username': body.username}
         valid = await asyncio.to_thread(hasher.verify, account['hash'], body.password.get_secret_value())
-        valid = valid and secrets.compare_digest(account['username'], body.username)
+        valid = valid and secrets.compare_digest(account['username'], body.username) and not account.get('disabled', False)
     except (FileNotFoundError, VerificationError, ValueError, KeyError):
         valid = False
     if not valid:
         raise HTTPException(401, 'Identifiant ou mot de passe Livebox OS incorrect.')
-    return issue(request, response, body.username)
+    return issue(request, response, body.username, account.get('role', 'admin'))
 
 
 @router.post('/logout')

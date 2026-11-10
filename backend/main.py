@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .livebox import Livebox, LiveboxError, local_url, redact
-from . import auth, database, operations, network, shares, control, user_profile, ssh_setup
+from . import auth, database, operations, network, shares, control, user_profile, ssh_setup, workspace, accounts, servers, service_monitor
 from .nat import normalize, normalize_section
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -126,8 +126,12 @@ async def reaper():
 @asynccontextmanager
 async def lifespan(app):
     cleanup = asyncio.create_task(reaper())
+    services_task = asyncio.create_task(service_monitor.collect())
     yield
     cleanup.cancel()
+    services_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await services_task
     with contextlib.suppress(asyncio.CancelledError):
         await cleanup
     for key in list(sessions):
@@ -139,13 +143,17 @@ async def lifespan(app):
     await control.shutdown()
 
 
-VERSION = '4.0.1'
+VERSION = '5.0.0'
 app = FastAPI(title='Livebox OS', version=VERSION, docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=[h.strip() for h in os.environ.get('ORANGE_ALLOWED_HOSTS', 'localhost,127.0.0.1,[::1],testserver').split(',')])
 app.include_router(auth.router)
 app.include_router(control.router)
 app.include_router(user_profile.router)
 app.include_router(ssh_setup.router)
+app.include_router(workspace.router)
+app.include_router(accounts.router)
+app.include_router(servers.router)
+app.include_router(service_monitor.router)
 
 
 @app.exception_handler(RequestValidationError)
@@ -168,6 +176,11 @@ async def protect(request: Request, call_next):
     admin = auth.current(request)
     if path.startswith('/api/') and not public and not admin:
         return JSONResponse({'detail': 'Votre session Livebox OS a expiré. Identifiez-vous à nouveau.', 'code': 'APP_AUTH_REQUIRED'}, status_code=401)
+    if admin and admin.role != 'admin' and path.startswith('/api/') and request.method not in ('GET', 'HEAD') and not public:
+        own = path.startswith(('/api/user/', '/api/workspace')) or path in ('/api/login', '/api/logout', '/api/auth/logout', '/api/network/tplink/login', '/api/network/tplink/logout') or bool(re.fullmatch(r'/api/control/resources/[a-f0-9]{16}/(connect|disconnect)', path))
+        docker_action = admin.role == 'operator' and bool(re.fullmatch(r'/api/servers/[a-f0-9]{16}/actions/(prepare|confirm)', path))
+        if not own and not docker_action:
+            return JSONResponse({'detail': 'Cette opération nécessite le rôle administrateur.'}, status_code=403)
     if path.startswith('/api/') and request.method not in ('GET', 'HEAD'):
         if not origin_allowed(request.headers.get('origin'), request.headers.get('host')):
             return JSONResponse({'detail': 'Origine non autorisée.'}, status_code=403)

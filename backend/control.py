@@ -57,7 +57,8 @@ class Metadata(Strict):
 class Rule(Strict):
     name: str = Field(min_length=1, max_length=80)
     resource: str = Field(pattern=r'^[a-f0-9]{16}$')
-    event: Literal['unavailable', 'new_device', 'public_ip']
+    event: Literal['unavailable', 'new_device', 'public_ip', 'cpu', 'memory', 'disk']
+    threshold: float = Field(default=90, ge=1, le=100)
     enabled: bool = True
 
 
@@ -99,6 +100,7 @@ def db_open():
     db = database.connect()
     try:
         db.executescript('''
+        CREATE TABLE IF NOT EXISTS service_samples (id INTEGER PRIMARY KEY, time REAL, resource TEXT, value TEXT);
         CREATE TABLE IF NOT EXISTS control_resources (id TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS control_rules (id TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS control_notes (id TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -204,6 +206,8 @@ def summarize(resource, reads):
         output = reads.get('system', {}).get('data')
         if isinstance(output, dict):
             value.update(uptime=output.get('uptime_seconds'), model=output.get('os'))
+            value.update(disk_percent=max((d.get('used_percent', 0) for d in output.get('disks', []) if isinstance(d.get('used_percent'), (int, float))), default=None))
+            value.update(cpu_percent=output.get('cpu_percent'), memory_used_bytes=output.get('memory', {}).get('used_bytes'), memory_total_bytes=output.get('memory', {}).get('total_bytes'))
         if isinstance(output, str):
             match = re.search(r'UPTIME\s+([0-9.]+)', output)
             if match:
@@ -241,13 +245,28 @@ def notify_changes(resource, before, after):
             events.append(('new_device', f'{len(new - old)} nouvel appareil observé par cet équipement.'))
         if before.get('public_ip') and after.get('public_ip') and before['public_ip'] != after['public_ip']:
             events.append(('public_ip', 'Adresse WAN modifiée entre deux observations.'))
-    rules = all_items('control_rules')
-    for event, message in events:
-        for rule in rules:
-            if rule['enabled'] and rule['resource'] == resource['id'] and rule['event'] == event:
-                with db_open() as db:
-                    db.execute('INSERT INTO control_notifications(time,resource,message) VALUES(?,?,?)', (time.time(), resource['id'], f'{rule["name"]} : {message}'))
-                    db.execute('DELETE FROM control_notifications WHERE id NOT IN (SELECT id FROM control_notifications ORDER BY id DESC LIMIT 1000)')
+    for rule in all_items('control_rules'):
+        if not rule['enabled'] or rule['resource'] != resource['id']: continue
+        messages = [message for event, message in events if rule['event'] == event]
+        if rule['event'] == 'unavailable' and not before['reachable'] and after['reachable']:
+            messages.append('Équipement de nouveau accessible.')
+        field = {'cpu': 'cpu_percent', 'memory': 'memory_percent', 'disk': 'disk_percent'}.get(rule['event'])
+        if field:
+            def metric(value):
+                if field == 'memory_percent':
+                    total, used = value.get('memory_total_bytes'), value.get('memory_used_bytes')
+                    return used / total * 100 if total and used is not None else None
+                return value.get(field)
+            old, new = metric(before), metric(after)
+            threshold = rule.get('threshold', 90)
+            if old is not None and new is not None:
+                if old < threshold <= new: messages.append(f'Seuil {rule["event"]} dépassé : {new:.1f} % (seuil {threshold:g} %).')
+                elif old >= threshold > new: messages.append(f'{rule["event"]} de nouveau sous le seuil : {new:.1f} %.')
+        for message in messages:
+            with db_open() as db:
+                db.execute('INSERT INTO control_notifications(time,resource,message) VALUES(?,?,?)', (time.time(), resource['id'], f'{rule["name"]} : {message}'))
+                db.execute('DELETE FROM control_notifications WHERE id NOT IN (SELECT id FROM control_notifications ORDER BY id DESC LIMIT 1000)')
+
 
 
 async def refresh(connection):
@@ -275,7 +294,7 @@ async def refresh(connection):
         connection.cache = {'reads': reads, 'summary': summary, 'updated': connection.updated}
         with db_open() as db:
             # Persist metrics only; device lists, SSH output and credentials stay out of samples.
-            sample = {k: summary.get(k) for k in ('reachable', 'uptime', 'internet', 'latency_ms', 'packet_loss_percent')}
+            sample = {k: summary.get(k) for k in ('reachable', 'uptime', 'internet', 'latency_ms', 'packet_loss_percent', 'cpu_percent', 'memory_used_bytes', 'memory_total_bytes', 'disk_percent')}
             db.execute('INSERT INTO control_samples(time,resource,value) VALUES(?,?,?)', (connection.updated, resource['id'], json.dumps(sample)))
             db.execute('DELETE FROM control_samples WHERE time < ? OR id NOT IN (SELECT id FROM control_samples ORDER BY id DESC LIMIT 20000)', (time.time() - 7 * 86400,))
         return connection.cache
@@ -545,7 +564,7 @@ async def history(key: str, hours: int = 24, format: Literal['json', 'csv'] = 'j
         items = [{'time': row[0], **json.loads(row[1])} for row in db.execute('SELECT time,value FROM control_samples WHERE resource=? AND time>? ORDER BY time LIMIT 20000', (key, time.time() - hours * 3600))]
     if format == 'csv':
         stream = io.StringIO()
-        writer = csv.DictWriter(stream, fieldnames=['time', 'reachable', 'uptime', 'internet', 'latency_ms', 'packet_loss_percent'])
+        writer = csv.DictWriter(stream, fieldnames=['time', 'reachable', 'uptime', 'internet', 'latency_ms', 'packet_loss_percent', 'cpu_percent', 'memory_used_bytes', 'memory_total_bytes', 'disk_percent'])
         writer.writeheader()
         writer.writerows({k: "'" + v if isinstance(v, str) and v.startswith(('=', '+', '-', '@')) else v for k, v in item.items()} for item in items)
         return Response(stream.getvalue(), media_type='text/csv', headers={'Content-Disposition': 'attachment; filename="observations.csv"'})

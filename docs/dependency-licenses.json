@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-25",
+  "generated": "2026-11-10",
   "scope": "Resolved Windows x64 validation runtime/test/build tools plus the Linux Compose runtime. Third-party source remains upstream.",
   "python": [
     {
@@ -260,6 +260,13 @@
       "license": "MIT-CMU; bundled codec notices retained",
       "source": "https://pypi.org/project/Pillow/13.0.0/#files",
       "notice": "licenses/pillow/LICENSE"
+    },
+    {
+      "name": "asyncssh",
+      "version": "2.24.1",
+      "license": "EPL-2.0 OR GPL-2.0-or-later",
+      "source": "https://pypi.org/project/asyncssh/2.24.1/#files",
+      "notice": "licenses/python-asyncssh.txt"
     }
   ],
   "frontend": [
@@ -1387,6 +1394,22 @@
       "license": "MPL-2.0",
       "source": "https://pypi.org/project/certifi/2026.10.23/#files",
       "notice": "licenses/linux-python-certifi.txt"
+    }
+  ],
+  "javascript": [
+    {
+      "name": "@xterm/xterm",
+      "version": "6.0.0",
+      "license": "MIT",
+      "source": "https://www.npmjs.com/package/@xterm/xterm/v/6.0.0",
+      "notice": "licenses/npm-xterm-xterm.txt"
+    },
+    {
+      "name": "@xterm/addon-fit",
+      "version": "0.11.0",
+      "license": "MIT",
+      "source": "https://www.npmjs.com/package/@xterm/addon-fit/v/0.11.0",
+      "notice": "licenses/npm-xterm-addon-fit.txt"
     }
   ]
 }

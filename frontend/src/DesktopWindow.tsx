@@ -14,6 +14,7 @@ export default function DesktopWindow({ win, name, color, icon: Icon, focus, pat
   const drag = useRef<{ dx: number; dy: number; x: number; y: number } | null>(null);
   const frame = useRef<number | null>(null);
   const geometry = useRef(win);
+  const leaving = useRef(false);
   geometry.current = win;
   const applyPatch = useRef(patch);
   applyPatch.current = patch;
@@ -41,6 +42,19 @@ export default function DesktopWindow({ win, name, color, icon: Icon, focus, pat
     const current = geometry.current;
     const next = clampWindow({ ...current, x: drag.current.x - drag.current.dx, y: drag.current.y - drag.current.dy }, innerWidth, innerHeight);
     patch({ x: next.x, y: next.y });
+  }
+
+  async function leave(minimize: boolean) {
+    if (leaving.current) return;
+    leaving.current = true;
+    const element = section.current;
+    if (element && !matchMedia('(prefers-reduced-motion: reduce)').matches && !element.closest('.motion-performance, .motion-disabled')) {
+      const rect = element.getBoundingClientRect();
+      const animation = element.animate([{ opacity: 1, scale: '1', translate: '0 0' }, { opacity: 0, scale: minimize ? '.25' : '.96', translate: minimize ? `0 ${Math.max(0, innerHeight - rect.bottom)}px` : '0 8px' }], { duration: minimize ? 180 : 130, easing: 'ease-in' });
+      await animation.finished.catch(() => {});
+    }
+    if (section.current) { if (minimize) patch({ minimized: true }); else close(); }
+    leaving.current = false;
   }
 
   return <section ref={section} aria-label={name} className={`os-window ${win.maximized ? 'maximized' : ''}`}
@@ -72,9 +86,9 @@ export default function DesktopWindow({ win, name, color, icon: Icon, focus, pat
       onLostPointerCapture={() => { drag.current = null; }}>
       <span className={`title-icon ${color}`}><Icon size={16} /></span><strong>{name}</strong>
       <div className="window-controls">
-        <button aria-label={`Réduire ${name}`} onClick={() => patch({ minimized: true })}><Minus size={16} /></button>
+        <button aria-label={`Réduire ${name}`} onClick={() => void leave(true)}><Minus size={16} /></button>
         <button aria-label={`${win.maximized ? 'Restaurer' : 'Agrandir'} ${name}`} onClick={() => patch({ maximized: !win.maximized })}><Maximize2 size={13} /></button>
-        <button className="close-window" aria-label={`Fermer ${name}`} onClick={close}><X size={17} /></button>
+        <button className="close-window" aria-label={`Fermer ${name}`} onClick={() => void leave(false)}><X size={17} /></button>
       </div>
     </div>
     <div className="window-content"><WindowVisibility.Provider value={!win.minimized}>{children}</WindowVisibility.Provider></div>

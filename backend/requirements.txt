@@ -6,3 +6,4 @@ argon2-cffi==25.1.0
 cryptography==50.0.2
 smbprotocol==1.15.0
 Pillow==13.0.0
+asyncssh==2.24.1

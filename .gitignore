@@ -77,3 +77,10 @@ Thumbs.db
 Desktop.ini
 *.swp
 *~
+
+# V5 private runtime configuration
+accounts.json
+server-policies.json
+services.json
+workspace.json
+known_hosts*

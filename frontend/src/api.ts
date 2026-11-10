@@ -7,6 +7,7 @@ export type Result = {
 };
 export type AuthState = {
   authenticated: boolean;
+  role?: 'admin' | 'operator' | 'viewer';
   configured: boolean;
   setup_allowed?: boolean;
   csrf?: string;
@@ -43,7 +44,7 @@ export async function api<T>(
   externalSignal?: AbortSignal,
 ): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), path === '/read/logs' || path === '/changes/confirm' || path.startsWith('/network/') || path.startsWith('/control/') ? 90000 : path === '/shares/login' ? 45000 : 35000);
+  const timer = setTimeout(() => controller.abort(), path === '/read/logs' || path === '/changes/confirm' || path.startsWith('/network/') || path.startsWith('/control/') || path.startsWith('/servers/') ? 90000 : path === '/shares/login' ? 45000 : 35000);
   try {
     const response = await fetch(`/api${path}`, {
       method: method || (body === undefined ? "GET" : "POST"),

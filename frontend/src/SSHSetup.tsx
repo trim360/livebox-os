@@ -40,11 +40,12 @@ function bytes(value: unknown) {
   return `${(value / 1024 ** index).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} ${['o', 'Kio', 'Mio', 'Gio'][index]}`;
 }
 
-export function LinuxSystem({ resource }: { resource: Resource }) {
-  const state = useRemote<{ available: boolean; data: unknown; message?: string }>(`/control/resources/${resource.id}/read/system`, 30000);
+export function LinuxSystem({ resource, result }: { resource?: Resource; result?: { available: boolean; data: unknown; message?: string } }) {
+  const remote = useRemote<{ available: boolean; data: unknown; message?: string }>(`/control/resources/${resource?.id}/read/system`, 30000, !!resource);
+  const state = result ? { ...remote, data: result } : remote;
   const system = rec(state.data?.data), memory = rec(system.memory);
   const disks = Array.isArray(system.disks) ? system.disks.map(rec) : [], interfaces = Array.isArray(system.interfaces) ? system.interfaces.map(rec) : [];
-  return <section className="cc-section"><div className="cc-heading"><h3>Informations Linux mesurées</h3><button disabled={state.busy} onClick={() => void state.load()}>Actualiser le serveur</button></div><Feedback {...state} />
+  return <section className="cc-section"><div className="cc-heading"><h3>Informations Linux mesurées</h3>{resource && <button disabled={state.busy} onClick={() => void state.load()}>Actualiser le serveur</button>}</div><Feedback {...state} />
     {state.data && !state.data.available ? <p className="cc-notice">{state.data.message || 'Non disponible'}</p> : state.data?.available && <>
       <dl className="cc-facts"><div><dt>Système</dt><dd>{typeof system.os === 'string' ? system.os : 'Non disponible'}</dd></div><div><dt>Uptime</dt><dd>{typeof system.uptime_seconds === 'number' ? duration(system.uptime_seconds) : 'Non disponible'}</dd></div><div><dt>Utilisation CPU, mesure sur 1 seconde</dt><dd>{typeof system.cpu_percent === 'number' ? `${system.cpu_percent} %` : 'Non disponible'}</dd></div><div><dt>RAM utilisée / totale</dt><dd>{bytes(memory.used_bytes)} / {bytes(memory.total_bytes)}</dd></div></dl>
       <h4>Stockage visible par le compte</h4>{disks.length ? <div className="table-wrap"><table><thead><tr><th>Montage</th><th>Utilisé</th><th>Total</th><th>Libre</th></tr></thead><tbody>{disks.map((disk, i) => <tr key={i}><td>{String(disk.mount)}</td><td>{bytes(disk.used_bytes)}</td><td>{bytes(disk.total_bytes)}</td><td>{bytes(disk.available_bytes)}</td></tr>)}</tbody></table></div> : <p>Non disponible</p>}

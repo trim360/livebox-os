@@ -58,3 +58,9 @@ No original Freebox screenshot, vendor-provided corporate-logo image or propriet
 ## Maintainer checklist
 
 When updating dependencies, regenerate the inventory and preserve relevant license and NOTICE files. Inspect native/bundled components rather than assuming every package is MIT. Review any newly copied code or asset before including it in a release.
+
+## V5 terminal dependencies
+
+AsyncSSH 2.24.1 is distributed **unmodified under EPL-2.0**, with the upstream secondary GPL alternative. Its full license is retained in [licenses/python-asyncssh.txt](licenses/python-asyncssh.txt). The corresponding source is available from [the 2.24.1 source distribution](https://pypi.org/project/asyncssh/2.24.1/#files) and [the upstream release](https://github.com/ronf/asyncssh/tree/v2.24.1). This separately licensed library is not relabeled MIT. Distributors must preserve its notices and make its source available as required by EPL-2.0; changes to that library must follow its license.
+
+xterm.js 6.0.0 and FitAddon 0.11.0 are MIT licensed. Their copyright and permission notices are retained in [xterm.js](licenses/npm-xterm-xterm.txt) and [FitAddon](licenses/npm-xterm-addon-fit.txt).
